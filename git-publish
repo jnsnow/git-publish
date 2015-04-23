@@ -532,6 +532,14 @@ def main():
         tag_message = get_latest_tag_message(topic)
         anno = options.edit or message
         tag(tag_name_staging(topic), tag_message, annotate=anno, force=True)
+        try:
+            git_push("jsnow", topic, force=True)
+            sync = True
+            print "This branch is available at %s branch %s" % (
+                git_get_config('remote', 'jsnow', 'url'), topic)
+        except:
+            print "Failed to push to sync-remote jsnow/%s" % topic
+            sync = False
 
     prefix = options.prefix
     if prefix is None:
@@ -579,6 +587,10 @@ def main():
             # Publishing is done, stablize the tag now
             _git("tag", tag_name(topic, number), tag_name_staging(topic))
             git_delete_tag(tag_name_staging(topic))
+            try:
+                git_push("jsnow", tag_name(topic, number), force=True)
+            except:
+                print "Failed to push tag to sync-remote jsnow/%s" % tag_name(topic, number)
 
     return 0
 
