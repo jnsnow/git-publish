@@ -28,6 +28,7 @@ import locale
 VERSION = '1.6.1'
 
 tag_version_re = re.compile(r'^[a-zA-Z0-9_/\-\.]+-v(\d+)$')
+remote_name_re = re.compile(r'^refs/remotes/(.*?)/.*$')
 
 ENCODING = locale.getpreferredencoding()
 
@@ -177,6 +178,20 @@ def git_get_tag_message(tag):
 def git_get_remote_url(remote):
     '''Return the URL for a given remote'''
     return _git_check('ls-remote', '--get-url', remote)[0]
+
+def git_get_remote_from_refspec(refspec):
+    pushref = _git('rev-parse', '--symbolic-full-name', refspec)
+    if not pushref:
+        return None
+    match = remote_name_re.match(pushref[0])
+    if not match:
+        return None
+    return match.group(1)
+
+def git_get_push_remote(topic = None):
+    if topic is None:
+        topic = git_get_current_branch()
+    return git_get_remote_from_refspec('%s@{push}' % topic)
 
 def git_get_push_remote_approx(topic = None):
     if topic is None:
@@ -704,7 +719,9 @@ def main():
         headers = []
 
     if options.pull_request:
-        remote = git_get_push_remote_approx(topic)
+        remote = git_get_push_remote(topic)
+        if remote is None or remote == '.':
+            remote = git_get_push_remote_approx(topic)
         if remote is None or remote == '.':
             remote = get_profile_var(options.profile_name, 'remote')
         if remote is None:
