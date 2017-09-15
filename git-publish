@@ -178,6 +178,16 @@ def git_get_remote_url(remote):
     '''Return the URL for a given remote'''
     return _git_check('ls-remote', '--get-url', remote)[0]
 
+def git_get_push_remote_approx(topic = None):
+    if topic is None:
+        topic = git_get_current_branch()
+    remote = git_get_config('branch', topic, 'pushRemote')
+    if remote is None:
+        remote = git_get_config('remote', 'pushDefault')
+    if remote is None:
+        remote = git_get_config('branch', topic, 'remote')
+    return remote
+
 def git_request_pull(base, remote, signed_tag):
     return _git_check('request-pull', base, remote, signed_tag)
 
@@ -694,11 +704,7 @@ def main():
         headers = []
 
     if options.pull_request:
-        remote = git_get_config('branch', topic, 'pushRemote')
-        if remote is None:
-            remote = git_get_config('remote', 'pushDefault')
-        if remote is None:
-            remote = git_get_config('branch', topic, 'remote')
+        remote = git_get_push_remote_approx(topic)
         if remote is None or remote == '.':
             remote = get_profile_var(options.profile_name, 'remote')
         if remote is None:
