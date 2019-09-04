@@ -25,6 +25,7 @@ import locale
 from email import message_from_file, header
 
 VERSION = '1.5.0'
+VERBOSE = False
 
 tag_version_re = re.compile(r'^[a-zA-Z0-9_/\-\.]+-v(\d+)$')
 
@@ -95,9 +96,7 @@ def bool_from_str(s):
 def git_get_config(*components):
     '''Get a git-config(1) variable'''
     lines = _git('config', '.'.join(components))
-    if len(lines):
-        return lines[0]
-    return None
+    return lines[0] if lines else None
 
 def git_get_config_list(*components):
     '''Get a git-config(1) list variable'''
@@ -124,9 +123,7 @@ def git_set_config(*components):
 def git_get_var(name):
     '''Get a git-var(1)'''
     lines = _git('var', name)
-    if len(lines):
-        return lines[0]
-    return None
+    return lines[0] if lines else None
 
 def git_get_current_branch():
     return _git_check('symbolic-ref', '--short', 'HEAD')[0]
@@ -152,8 +149,7 @@ def git_delete_tag(name):
 def git_get_tags(pattern=None):
     if pattern:
         return _git('tag', '-l', pattern)
-    else:
-        return _git('tag')
+    return _git('tag')
 
 def git_get_tag_message(tag):
     message = []
@@ -193,7 +189,7 @@ def git_tag(name, annotate=None, force=False, sign=False, keyid=None):
 
 def git_format_patch(revlist, subject_prefix=None, output_directory=None,
                      numbered=False, cover_letter=False, signoff=False,
-                     notes=False, binary=True, extra_args=[]):
+                     notes=False, binary=True, extra_args=None):
     args = ['format-patch']
     if subject_prefix:
         args += ['--subject-prefix', subject_prefix]
@@ -212,7 +208,8 @@ def git_format_patch(revlist, subject_prefix=None, output_directory=None,
     if not binary:
         args += ['--no-binary']
     args += [revlist]
-    args += extra_args
+    if extra_args:
+        args += extra_args
     _git_check(*args)
 
 def git_send_email(to_list, cc_list, patches, suppress_cc, in_reply_to, dry_run=False):
@@ -231,11 +228,13 @@ def git_send_email(to_list, cc_list, patches, suppress_cc, in_reply_to, dry_run=
         args += ['--quiet']
     args += ['--confirm=never']
     args += patches
+
     if dry_run:
-            return _git_with_stderr(*args[1:])[0]
-    else:
-        if subprocess.call(args) != 0:
-            raise GitSendEmailError
+        return _git_with_stderr(*args[1:])[0]
+
+    if subprocess.call(args) != 0:
+        raise GitSendEmailError
+    return None
 
 GIT_HOOKDIR = None
 def git_get_hook_dir():
@@ -299,7 +298,7 @@ def check_profile_exists(profile_name):
 def get_first_profile():
     '''Return name of the first profile, None if no profile is found'''
     lines = git_config_with_profile('--get-regexp', '^gitpublishprofile\\.*\\.')
-    if len(lines):
+    if lines:
         return lines[0].split(".")[1]
     return None
 
@@ -307,9 +306,7 @@ def get_profile_var(profile_name, var_name):
     '''Get a profile variable'''
     option = '.'.join(['gitpublishprofile', profile_name, var_name])
     lines = git_config_with_profile(option)
-    if len(lines):
-        return lines[0]
-    return None
+    return lines[0] if lines else None
 
 def get_profile_var_list(profile_name, var_name):
     '''Get a profile list variable'''
@@ -447,16 +444,14 @@ def inspect_menu(tmpdir, to_list, cc_list, patches, suppress_cc, in_reply_to,
         print()
         output = git_send_email(to_list, cc_list, patches, suppress_cc,
                                 in_reply_to, dry_run=True)
-        index = 0
         for f in patches:
             m = message_from_file(open(f))
             print(parse_header(m['subject']))
             # Print relevant 'Adding cc' lines from the git-send-email --dry-run output
-            while index < len(output) and len(output[index]):
-                if output[index].find('Adding cc') != -1:
-                    print('  ' + output[index])
-                index += 1
-            index += 1
+            for line in output:
+                if 'Adding cc' in output:
+                    print("  %s" % line)
+
         print()
         print("To:", "\n    ".join(to_list))
         if cc_list:
@@ -465,14 +460,14 @@ def inspect_menu(tmpdir, to_list, cc_list, patches, suppress_cc, in_reply_to,
             print("In-Reply-To:", in_reply_to)
         print()
         a = menu_select([
-                ('c', 'Edit Cc list in editor (save after edit)'),
-                ('t', 'Edit To list in editor (save after edit)'),
-                ('e', 'Edit patches in editor'),
-                ('s', 'Select patches to send (default: all)'),
-                ('p', 'Print final email headers (dry run)'),
-                ('a', 'Send all'),
-                ('q', 'Cancel (quit)'),
-            ])
+            ('c', 'Edit Cc list in editor (save after edit)'),
+            ('t', 'Edit To list in editor (save after edit)'),
+            ('e', 'Edit patches in editor'),
+            ('s', 'Select patches to send (default: all)'),
+            ('p', 'Print final email headers (dry run)'),
+            ('a', 'Send all'),
+            ('q', 'Cancel (quit)'),
+        ])
         if a == 'q':
             raise InspectEmailsError
         elif a == 'c':
@@ -502,10 +497,12 @@ def inspect_menu(tmpdir, to_list, cc_list, patches, suppress_cc, in_reply_to,
 
 def parse_args():
 
-    parser = optparse.OptionParser(version='%%prog %s' % VERSION,
-            usage='%prog [options] -- [common format-patch options]',
-            description='Prepare and store patch revisions as git tags.',
-            epilog='Please report bugs to Stefan Hajnoczi <stefanha@gmail.com>.')
+    parser = optparse.OptionParser(
+        version='%%prog %s' % VERSION,
+        usage='%prog [options] -- [common format-patch options]',
+        description='Prepare and store patch revisions as git tags.',
+        epilog='Please report bugs to Stefan Hajnoczi <stefanha@gmail.com>.'
+    )
     parser.add_option('--annotate', dest='annotate', action='store_true',
                       default=False, help='review and edit each patch email')
     parser.add_option('-b', '--base', dest='base', default=None,
@@ -636,7 +633,7 @@ def main():
     else:
         number = get_latest_tag_number(topic) + 1
 
-    to = set([to_text(_) for _ in options.to])
+    to = set(to_text(_) for _ in options.to)
     if not options.edit and not options.override_to:
         to = to.union(git_get_config_list('branch', topic, 'gitpublishto'))
         to = to.union(get_profile_var_list(options.profile_name, 'to'))
@@ -644,7 +641,7 @@ def main():
     if options.forget_cc:
         git_set_config('branch', topic, 'gitpublishcc', [])
 
-    cc = set([to_text(_) for _ in options.cc])
+    cc = set(to_text(_) for _ in options.cc)
     if not options.edit and not options.override_cc:
         cc = cc.union(git_get_config_list('branch', topic, 'gitpublishcc'))
         cc = cc.union(get_profile_var_list(options.profile_name, 'cc'))
@@ -806,8 +803,11 @@ branch.%s.pushRemote is set appropriately?  (Override with --no-url-check)''' % 
                 edit(*patches)
             if cc_cmd:
                 for x in patches:
-                    output = subprocess.check_output(cc_cmd + " " + x,
-                                shell=True, cwd=git_get_toplevel_dir()).decode(ENCODING)
+                    output = subprocess.check_output(
+                        cc_cmd + " " + x,
+                        shell=True,
+                        cwd=git_get_toplevel_dir()
+                    ).decode(ENCODING)
                     cc = cc.union(output.splitlines())
             cc.difference_update(to)
             if inspect_emails:
