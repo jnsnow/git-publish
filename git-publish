@@ -149,8 +149,9 @@ def git_rev_parse(key):
 def git_get_toplevel_dir():
     return git_rev_parse('show-toplevel')
 
+# Return the location of the (real) git-dir.
 def git_get_git_dir():
-    return git_rev_parse('git-dir')
+    return git_rev_parse('git-common-dir') or git_rev_parse('git-dir')
 
 def git_delete_tag(name):
     # Hide stderr when tag does not exist
@@ -246,15 +247,13 @@ def git_send_email(to_list, cc_list, patches, suppress_cc, in_reply_to, dry_run=
         raise GitSendEmailError
     return None
 
-GIT_HOOKDIR = None
 def git_get_hook_dir():
-    global GIT_HOOKDIR
-    if GIT_HOOKDIR is None:
-        common_dir = git_rev_parse('git-common-dir')
-        if common_dir is None:
-            common_dir = git_get_git_dir()
-        GIT_HOOKDIR = os.path.join(common_dir, 'hooks')
-    return GIT_HOOKDIR
+    try:
+        return git_get_hook_dir.cache
+    except AttributeError:
+        tmp = os.path.join(git_get_git_dir(), 'hooks')
+        git_get_hook_dir.cache = tmp
+        return tmp
 
 def invoke_hook(name, *args):
     '''Run a githooks(5) script'''
