@@ -128,19 +128,29 @@ def git_get_var(name):
 def git_get_current_branch():
     return _git_check('symbolic-ref', '--short', 'HEAD')[0]
 
-GIT_TOPLEVEL = None
-def git_get_toplevel_dir():
-    global GIT_TOPLEVEL
-    if GIT_TOPLEVEL is None:
-        GIT_TOPLEVEL = _git_check('rev-parse', '--show-toplevel')[0]
-    return GIT_TOPLEVEL
+def git_rev_parse(key):
+    def _lookup(key):
+        flag = "--{}".format(key)
+        value = _git_check('rev-parse', flag)[0]
+        if value == flag:
+            # This didn't parse at all:
+            value = None
+        git_rev_parse.cache[key] = value
+        return value
 
-GIT_DIR = None
+    try:
+        return git_rev_parse.cache[key]
+    except AttributeError:
+        git_rev_parse.cache = {}
+        return _lookup(key)
+    except KeyError:
+        return _lookup(key)
+
+def git_get_toplevel_dir():
+    return git_rev_parse('show-toplevel')
+
 def git_get_git_dir():
-    global GIT_DIR
-    if GIT_DIR is None:
-        GIT_DIR = _git('rev-parse', '--git-dir')[0]
-    return GIT_DIR
+    return git_rev_parse('git-dir')
 
 def git_delete_tag(name):
     # Hide stderr when tag does not exist
@@ -240,8 +250,8 @@ GIT_HOOKDIR = None
 def git_get_hook_dir():
     global GIT_HOOKDIR
     if GIT_HOOKDIR is None:
-        common_dir = _git('rev-parse', '--git-common-dir')[0]
-        if common_dir.startswith("--git-common-dir"):
+        common_dir = git_rev_parse('git-common-dir')
+        if common_dir is None:
             common_dir = git_get_git_dir()
         GIT_HOOKDIR = os.path.join(common_dir, 'hooks')
     return GIT_HOOKDIR
